@@ -1,6 +1,6 @@
 {
 	"name": "pi-context-cap",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Cap model context windows to trigger pi's auto-compaction earlier. Zero-config for Anthropic's 200k pricing tier; configurable for other models and use cases.",
 	"keywords": [
 		"pi-package",

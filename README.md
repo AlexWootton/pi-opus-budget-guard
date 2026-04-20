@@ -155,7 +155,8 @@ For typical conversational coding, this is rare. For strict guarantees:
 
 ## See also
 
-- [`pi-model-aware-compaction`](https://www.npmjs.com/package/pi-model-aware-compaction) — per-model **percent-based** compaction thresholds using a different mechanism (inflating reported token counts to trigger pi's compaction). Good when you think in percentages; this extension is better when you think in absolute tokens and/or want `/context` to honestly reflect your working ceiling.
+- [`pi-custom-compaction`](https://www.npmjs.com/package/pi-custom-compaction) — swaps pi's compaction model, template, *and* trigger point. Its `trigger.maxTokens` option overlaps with this extension's core function. Choose `pi-custom-compaction` if you also want to swap the summarizer model or get per-project compaction-policy control; choose `pi-context-cap` if you only want per-model trigger caps with zero-config defaults and `/context` that honestly reflects your working ceiling.
+- [`pi-model-aware-compaction`](https://www.npmjs.com/package/pi-model-aware-compaction) — per-model **percent-based** compaction thresholds using a different mechanism (inflating reported token counts to trigger pi's compaction). Good when you think in percentages; this extension is better when you think in absolute tokens.
 - [`pi-budget-guard`](https://www.npmjs.com/package/pi-budget-guard) — tracks **dollar spend** per session and blocks tool calls at a $ threshold. Complementary (dollars ≠ tokens); safe to run alongside.
 
 ## How it works
