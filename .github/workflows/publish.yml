@@ -43,8 +43,17 @@ jobs:
       # No NODE_AUTH_TOKEN needed: npm CLI detects the GitHub Actions OIDC
       # token via the id-token: write permission and exchanges it with npm
       # for a one-shot publish credential. Provenance is enabled automatically.
-      - name: Publish to npm (trusted publisher)
-        run: npm publish --access=public
+      # Idempotent: if this version was already published (e.g., first publish
+      # was manual), we skip and let the Release step still create the tag notes.
+      - name: Publish to npm (trusted publisher; skip if already published)
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::$NAME@$VERSION already on npm; skipping publish."
+          else
+            npm publish --access=public
+          fi
 
       - name: Create GitHub Release
         env:
