@@ -3,42 +3,27 @@
 [![npm version](https://img.shields.io/npm/v/pi-context-cap.svg)](https://www.npmjs.com/package/pi-context-cap)
 [![license](https://img.shields.io/npm/l/pi-context-cap.svg)](./LICENSE)
 
-A tiny [pi](https://github.com/badlogic/pi-mono) extension that caps model context windows so pi's built-in auto-compaction fires earlier. Zero-config for Anthropic's 200k pricing-tier boundary; fully configurable for other models and use cases.
+A tiny [pi](https://github.com/badlogic/pi-mono) extension that caps model `contextWindow` values so pi's built-in auto-compaction triggers earlier than the model's native limit. Zero-config defaults for 1M-window Claude models; fully configurable for anything else.
 
-## Primary use case: Anthropic's 200k pricing tier
+## What it does
 
-Anthropic's long-context Claude models (Opus 4.6, Opus 4.7, Sonnet 4.6, and any future 1M-window variants) have a 1,000,000-token window but bill input and output at roughly **2× once a request crosses 200,000 input tokens** (the "long-context" tier). Pi's default auto-compaction trigger is:
+Pi's auto-compaction trigger is:
 
 ```
 contextTokens > contextWindow - reserveTokens
 ```
 
-With a 1M window and the default `reserveTokens = 16384`, **compaction doesn't fire until ~983,616 tokens** — well into long-context pricing. A long session can quietly 2–3× its expected cost before pi ever tries to compact.
+For a Claude model with a native 1,000,000-token window and the default `reserveTokens = 16384`, that means compaction doesn't fire until **~983,616 tokens** — which is probably not what you want for day-to-day use. Sessions that actually approach 1M are slow per turn, carry a lot of noise the model has to attend to, and cost a lot each time they round-trip.
 
-This extension's defaults fix exactly that. Install with no configuration:
+This extension caps `contextWindow` in pi's in-memory model registry at session start, so compaction fires at a user-chosen ceiling (default 200,000) instead. Everything else in pi's compaction machinery — the summarizer model, the prompt, the recovery flow, `/compact`, `session_before_compact` hooks — is unchanged.
 
-```bash
-pi install npm:pi-context-cap
-```
-
-Any Claude model with a native window >200k is silently capped at 200k. Pi's existing compaction logic then fires at ~183k — exactly like on a native-200k model. On Opus 4.7 you'll see:
+On Opus 4.7 or Sonnet 4.6 you'll see:
 
 ```
 Context: 182,411 / 200,000 (91%)
 ```
 
-…and compaction kicks in at the normal time.
-
-## Other use cases
-
-The same mechanism generalises to anything where you'd want pi to compact before the model's native context limit:
-
-- **Performance sweet spot** — many models degrade near their context limit. Cap all models at a fraction of their native window so compaction fires before quality craters.
-- **Non-Anthropic cost control** — a provider's window may be large but per-token costs mount. Cap a 1M/2M model at e.g. 500k to keep spend predictable.
-- **Per-model tuning** — different models summarise context differently. Set `"claude-opus-4-7": 200000` and `"claude-sonnet-4-6": 150000` if you want more headroom on one.
-- **Testing and dev** — force compaction at a predictable point without burning through real tokens.
-
-All of these are one-file config changes. See [Configure](#configure).
+…and compaction kicks in at the normal time, as if you were on a natively-200k model.
 
 ## Install
 
@@ -54,7 +39,22 @@ git clone https://github.com/AlexWootton/pi-context-cap
 pi install ./pi-context-cap
 ```
 
-**Default behavior:** caps any model whose `id` contains `"anthropic"` or `"claude"` and whose native `contextWindow > 200_000`, down to exactly `200_000`. All other models are left alone.
+**Default behavior:** any model whose `id` contains `"anthropic"` or `"claude"` and whose native `contextWindow > 200_000` is capped at exactly `200_000`. All other models are left alone.
+
+## Why you might want this
+
+- **Shorter working memory per turn.** Every turn pays for every token currently in context. Capping at 200k instead of 1M means each turn is billed against a smaller working set, and pi summarizes older history rather than carrying it at full fidelity.
+- **Honest `/context` meter.** A meter that fills toward 1M tells you very little; a meter that fills toward the ceiling *you chose* actually tells you when compaction is coming.
+- **Predictable pacing.** You picked the ceiling, so you know the upper bound on what a full-context turn costs. No being surprised by a 900k-token turn because you forgot how large the window was.
+- **No server-side equivalent for "Opus 4.7 capped at 200k."** Anthropic's API doesn't expose a wire-level "serve this model in 200k mode" toggle — the model identifier determines the mode. If you want to *stay on 4.7/4.6* but use less of its window, this extension does that client-side.
+
+### What this is *not*
+
+- **Not a pricing-tier change.** Current 1M-context Claude models (Opus 4.6, Opus 4.7, Sonnet 4.6) are billed at standard rates across the full window. Capping doesn't move you off any tier.
+- **Not a serving-mode switch.** There is no wire-level negotiation that routes a capped request to a different serving path. The model identifier determines the mode; a client-side cap only shrinks what you send.
+- **Not a latency guarantee.** Any speed benefit is strictly downstream of sending fewer tokens per turn.
+
+If you want a same-family model that is natively 200k (different serving characteristics, not just a smaller client-side window), look at the 4.5 generation: `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5`. That's a model-selection choice, orthogonal to this extension.
 
 ## Configure
 
@@ -82,13 +82,7 @@ All keys are optional. Values shown are the defaults.
 
 ### Examples
 
-**Anthropic tier (the default — shown for reference):**
-
-```json
-{ "cap": 200000, "matchPatterns": ["anthropic", "claude"] }
-```
-
-**More conservative buffer below the tier boundary:**
+**More conservative buffer below 200k:**
 
 ```json
 { "cap": 180000 }
@@ -130,11 +124,21 @@ All keys are optional. Values shown are the defaults.
 
 Model IDs match `model.id` exactly; run `pi --list-models` to see them. Unknown IDs in `models` are silently ignored.
 
+## Other use cases
+
+The mechanism is general:
+
+- **Per-model tuning** — different models summarise context differently. Set `"claude-opus-4-7": 200000` and `"claude-sonnet-4-6": 150000` if you want more headroom on one than the other.
+- **Long-window non-Anthropic models** — a Gemini or Grok model advertising a 1M/2M window can be capped to something you actually want to pay for per turn.
+- **Testing and dev** — force compaction at a predictable point without burning through real tokens.
+
+All of these are one-file config changes.
+
 ## What it does and doesn't do
 
 **Does:**
 - Cap `contextWindow` on matching models so pi's built-in auto-compaction fires at the cap point.
-- Show `capped N models` notification once on session start.
+- Emit a `capped N model(s)` notification once on session start.
 - Work with all of pi's compaction machinery (including `session_before_compact` hooks, manual `/compact`, and compaction error recovery) without modification.
 - Apply project config on top of global config.
 
@@ -142,13 +146,13 @@ Model IDs match `model.id` exactly; run `pi --list-models` to see them. Unknown 
 - Replace or duplicate pi's compaction logic.
 - Touch token billing, API requests, or the messages array.
 - Cap any model if `matchPatterns` is empty *and* `models` has no entries (you've told it to do nothing).
-- Prevent a *single* turn from crossing the cap if that turn's new content (large tool output, pasted document) exceeds the reserve buffer — see **Caveats**.
+- Prevent a *single* turn from crossing the cap if that turn's new content exceeds the reserve buffer — see **Caveats**.
 
 ## Caveats
 
 Pi's compaction trigger checks the **previous assistant's** reported input-token usage. So if one turn adds more than `reserveTokens` (default ~16k tokens) of fresh content — say, three large file reads plus a long bash dump — the next request may be sent with more input tokens than the cap despite this extension being active.
 
-For typical conversational coding, this is rare. For strict guarantees:
+For typical conversational coding, this is rare. For stricter guarantees:
 
 - Set `cap` below your actual ceiling (e.g. `180000` to stay well under 200k).
 - Or bump `compaction.reserveTokens` in `~/.pi/agent/settings.json` (affects *all* models, not just the capped ones).
@@ -157,7 +161,7 @@ For typical conversational coding, this is rare. For strict guarantees:
 
 - [`pi-custom-compaction`](https://www.npmjs.com/package/pi-custom-compaction) — swaps pi's compaction model, template, *and* trigger point. Its `trigger.maxTokens` option overlaps with this extension's core function. Choose `pi-custom-compaction` if you also want to swap the summarizer model or get per-project compaction-policy control; choose `pi-context-cap` if you only want per-model trigger caps with zero-config defaults and `/context` that honestly reflects your working ceiling.
 - [`pi-model-aware-compaction`](https://www.npmjs.com/package/pi-model-aware-compaction) — per-model **percent-based** compaction thresholds using a different mechanism (inflating reported token counts to trigger pi's compaction). Good when you think in percentages; this extension is better when you think in absolute tokens.
-- [`pi-budget-guard`](https://www.npmjs.com/package/pi-budget-guard) — tracks **dollar spend** per session and blocks tool calls at a $ threshold. Complementary (dollars ≠ tokens); safe to run alongside.
+- [`pi-budget-guard`](https://www.npmjs.com/package/pi-budget-guard) — tracks **dollar spend** per session and blocks tool calls at a `$` threshold. Complementary (dollars ≠ tokens); safe to run alongside.
 
 ## How it works
 

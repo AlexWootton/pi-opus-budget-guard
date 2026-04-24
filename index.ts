@@ -2,16 +2,23 @@
  * pi-context-cap
  *
  * Caps the reported `contextWindow` on selected models so pi's built-in
- * auto-compaction fires earlier. Intended primarily for Anthropic's 200k
- * pricing-tier boundary on long-context Claude models, but the mechanism
- * is fully general — configure it to fit any context-window capping need.
+ * auto-compaction fires earlier than the model's native limit. Default
+ * behavior targets long-context Claude models (1M window → 200k cap), but
+ * the mechanism is fully general.
  *
  * No custom compaction logic: we tell pi the window is smaller and let
  * its existing `contextTokens > contextWindow - reserveTokens` trigger do
  * the work. All existing compaction behavior (hooks, summarization, error
  * handling) is preserved.
  *
- * Config (optional; default is Anthropic-tier behavior):
+ * What this is NOT:
+ *   - A pricing-tier change. Current 1M Claude models bill at standard
+ *     rates across the full window.
+ *   - A serving-mode switch. There is no wire-level toggle that routes a
+ *     capped request to a different serving path; the model identifier
+ *     determines the mode.
+ *
+ * Config (optional; default is 200k cap on anthropic/claude models):
  *
  *   ~/.pi/agent/extensions/context-cap.json         (global)
  *   <cwd>/.pi/extensions/context-cap.json           (project override)

@@ -1,17 +1,14 @@
 {
 	"name": "pi-context-cap",
-	"version": "0.1.1",
-	"description": "Cap model context windows to trigger pi's auto-compaction earlier. Zero-config for Anthropic's 200k pricing tier; configurable for other models and use cases.",
+	"version": "0.1.2",
+	"description": "Cap model context windows so pi's built-in auto-compaction fires earlier. Zero-config 200k default for long-context Claude models; configurable for anything else.",
 	"keywords": [
 		"pi-package",
 		"pi-extension",
 		"context-window",
 		"compaction",
 		"anthropic",
-		"claude",
-		"tier",
-		"cost-control",
-		"pricing"
+		"claude"
 	],
 	"license": "MIT",
 	"author": "Alex Wootton (https://github.com/AlexWootton)",
